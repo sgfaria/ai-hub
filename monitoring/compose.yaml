@@ -1,0 +1,94 @@
+services:
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION:-latest}
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${AI_HUB_ROOT:-/srv/ai-hub}/monitoring/prometheus:/prometheus
+    expose:
+      - "9090"
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    networks:
+      - ai-network
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-latest}
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-America/Sao_Paulo}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?defina GRAFANA_ADMIN_PASSWORD no Portainer}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:?defina a URL HTTPS pública do Grafana}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ${AI_HUB_ROOT:-/srv/ai-hub}/monitoring/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    expose:
+      - "3000"
+    depends_on:
+      - prometheus
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    networks:
+      - ai-network
+
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-latest}
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    expose:
+      - "9100"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ai-network
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:${CADVISOR_VERSION:-latest}
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: false
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    expose:
+      - "8080"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    external: true
+    name: ${AI_HUB_NETWORK:-ai-network}
