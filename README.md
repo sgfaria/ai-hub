@@ -52,6 +52,7 @@ Tunnel apontando para os nomes Docker, por exemplo `http://open-webui:8080` e
 
 ## Operação
 
+- [Deployment no Portainer Standalone](docs/deployment.md)
 - [Backup e restauração](docs/backup-restore.md)
 - [Observabilidade](monitoring/README.md)
 
