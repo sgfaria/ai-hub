@@ -1,0 +1,33 @@
+services:
+  redis:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?defina REDIS_PASSWORD no Portainer}
+
+    volumes:
+      - ${AI_HUB_ROOT:-/srv/ai-hub}/redis/data:/data
+
+    expose:
+      - "6379"
+
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    external: true
+    name: ${AI_HUB_NETWORK:-ai-network}

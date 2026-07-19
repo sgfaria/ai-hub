@@ -1,0 +1,30 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:-latest}
+    container_name: cloudflared
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN:?defina o token no Portainer}"]
+    restart: unless-stopped
+
+    environment:
+      TUNNEL_METRICS: 0.0.0.0:2000
+
+    expose:
+      - "2000"
+
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    external: true
+    name: ${AI_HUB_NETWORK:-ai-network}
