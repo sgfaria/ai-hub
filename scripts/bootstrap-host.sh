@@ -17,7 +17,12 @@ install -d -m 0750 \
   "${AI_HUB_ROOT}/postgres/data" \
   "${AI_HUB_ROOT}/redis/data" \
   "${AI_HUB_ROOT}/n8n/data" \
+  "${AI_HUB_ROOT}/monitoring/prometheus" \
+  "${AI_HUB_ROOT}/monitoring/grafana" \
   "${AI_HUB_ROOT}/backups"
+
+touch "${AI_HUB_ROOT}/.ai-hub-root"
+chmod 0640 "${AI_HUB_ROOT}/.ai-hub-root"
 
 if ! docker network inspect "${AI_HUB_NETWORK}" >/dev/null 2>&1; then
   docker network create --driver bridge "${AI_HUB_NETWORK}" >/dev/null

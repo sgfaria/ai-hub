@@ -24,7 +24,8 @@ Docker Compose/Portainer em modo **Standalone**. O projeto não requer Swarm.
 | `redis/` | Cache compartilhado | base |
 | `n8n/` | Automação | base |
 | `cloudflared/` | Integração com túnel existente | base |
-| `monitoring/` | Observabilidade | planejado |
+| `monitoring/` | Prometheus, Grafana, Node Exporter e cAdvisor | utilizável |
+| `scripts/` | Bootstrap, backup e restauração | utilizável |
 
 ## Início rápido
 
@@ -48,3 +49,8 @@ Nunca confirme arquivos `.env`, tokens, senhas ou backups no Git. Os bancos
 não publicam portas no host. Para acesso externo, crie hostnames no Cloudflare
 Tunnel apontando para os nomes Docker, por exemplo `http://open-webui:8080` e
 `http://hermes-agent:9119`.
+
+## Operação
+
+- [Backup e restauração](docs/backup-restore.md)
+- [Observabilidade](monitoring/README.md)
