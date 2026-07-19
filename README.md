@@ -54,3 +54,14 @@ Tunnel apontando para os nomes Docker, por exemplo `http://open-webui:8080` e
 
 - [Backup e restauração](docs/backup-restore.md)
 - [Observabilidade](monitoring/README.md)
+
+## Validação local
+
+Em Linux ou WSL, com Docker Compose, ShellCheck e yamllint instalados:
+
+```bash
+./scripts/validate.sh
+```
+
+O mesmo conjunto de verificações é executado automaticamente pelo GitHub
+Actions em pull requests e em pushes para `main`.
