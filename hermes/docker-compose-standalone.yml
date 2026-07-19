@@ -1,0 +1,103 @@
+services:
+  hermes-agent:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes-agent
+
+    # Equivalente ao --shm-size=1g do "docker run": necessário pro Playwright
+    # (automação de navegador) não travar por falta de memória compartilhada.
+    shm_size: "1gb"
+
+    restart: unless-stopped
+
+    env_file:
+      # Contém TUDO: config não sensível + tokens/API keys.
+      # Sem docker secret nativo fora do Swarm, a prática comum é isolar
+      # segredos num .env com permissão restrita (veja instruções no fim).
+      - .env
+
+    environment:
+      HERMES_LLM_BASE_URL: "${HERMES_LLM_BASE_URL:-https://api.openai.com/v1}"
+      HERMES_LLM_MODEL: "${HERMES_LLM_MODEL:-gpt-4o-mini}"
+      HERMES_PLATFORM: "${HERMES_PLATFORM:-telegram}"
+      HERMES_MEMORY_PERSISTENT: "${HERMES_MEMORY_PERSISTENT:-true}"
+      HERMES_SKILLS_AUTOGEN: "${HERMES_SKILLS_AUTOGEN:-true}"
+      TZ: "${TZ:-America/Sao_Paulo}"
+
+    volumes:
+      # Bind mount direto no disco do host — facilita backup/tar/scp pra
+      # transferir memória e skills acumuladas para outro servidor.
+      - ${HERMES_HOST_DATA_DIR:-/srv/hermes/data}:/root/.hermes
+
+    # Se o Hermes expuser alguma porta HTTP/API local, descomente e ajuste:
+    # ports:
+    #   - "8080:8080"
+
+    deploy:
+      # deploy.resources funciona no Compose padrão desde a v2 (não exige
+      # Swarm), mas restart_policy/replicas/placement são ignorados fora
+      # do Swarm — por isso o restart fica na chave "restart:" acima.
+      resources:
+        limits:
+          cpus: "${HERMES_CPU_LIMIT:-4}"
+          memory: ${HERMES_MEM_LIMIT:-4G}
+        reservations:
+          cpus: "1"
+          memory: 1G
+
+  # --- Opcional: Ollama para rodar o modelo 100% local ---
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ${OLLAMA_HOST_DATA_DIR:-/srv/ollama/data}:/root/.ollama
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "6"
+  #         memory: 12G
+
+# ============================================================
+# INSTRUÇÕES DE USO (Docker Compose padrão, sem Swarm)
+# ============================================================
+#
+# 1) Criar o diretório de dados no host (mesma ideia do bind mount anterior):
+#      sudo mkdir -p /srv/hermes/data
+#      sudo chown -R 1000:1000 /srv/hermes/data   # ajuste UID/GID se preciso
+#
+# 2) Criar o arquivo .env (copie de .env.example) e PROTEGER o acesso, já
+#    que ele guarda tokens/API keys em texto puro:
+#      cp .env.example .env
+#      nano .env                 # preencha HERMES_BOT_TOKEN, HERMES_LLM_API_KEY etc.
+#      chmod 600 .env
+#      # garanta que .env está no .gitignore se esse diretório for um repo git
+#
+# 3) Subir:
+#      docker compose up -d
+#
+# 4) Ver logs:
+#      docker compose logs -f hermes-agent
+#
+# 5) Parar / remover:
+#      docker compose down
+#
+# 6) Exportar conhecimento acumulado pra outro servidor:
+#      docker compose stop hermes-agent
+#      tar -czf hermes-data-backup.tar.gz -C /srv/hermes/data .
+#      scp hermes-data-backup.tar.gz usuario@outro-servidor:/tmp/
+#      # no destino: extrair em /srv/hermes/data e rodar "docker compose up -d"
+#      docker compose start hermes-agent
+#
+# Alternativa mais segura para os tokens (se a imagem suportar):
+# Em vez de colocar HERMES_BOT_TOKEN e HERMES_LLM_API_KEY em texto no .env,
+# monte cada um como um arquivo separado e aponte a env var *_FILE:
+#
+#   volumes:
+#     - ./secrets/bot_token.txt:/run/secrets/hermes_bot_token:ro
+#     - ./secrets/llm_api_key.txt:/run/secrets/hermes_llm_api_key:ro
+#   environment:
+#     HERMES_BOT_TOKEN_FILE: /run/secrets/hermes_bot_token
+#     HERMES_LLM_API_KEY_FILE: /run/secrets/hermes_llm_api_key
+#
+# Isso só funciona se a imagem do Hermes ler variáveis *_FILE nativamente —
+# confirme na documentação/entrypoint da imagem antes de depender disso.

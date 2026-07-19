@@ -1,0 +1,168 @@
+version: "3.8"
+
+# Deploy: docker stack deploy -c docker-compose.yaml hermes
+# Requer Docker em modo Swarm ativo (docker swarm init) e os secrets criados
+# previamente (ver instruções no final do arquivo).
+
+services:
+  hermes-agent:
+    image: nousresearch/hermes-agent:latest
+    # shm_size é obrigatório: o Playwright (automação de navegador) precisa
+    # de memória compartilhada, e o Compose/Swarm não expõe --shm-size direto,
+    # por isso usamos a chave equivalente abaixo.
+    shm_size: "1gb"
+
+    environment:
+      # --- Backend do LLM (não-sensível: vem do .env, com padrão embutido) ---
+      HERMES_LLM_BASE_URL: "${HERMES_LLM_BASE_URL:-https://api.openai.com/v1}"
+      HERMES_LLM_MODEL: "${HERMES_LLM_MODEL:-gpt-4o-mini}"
+
+      # --- Integração com mensageria ---
+      HERMES_PLATFORM: "${HERMES_PLATFORM:-telegram}"
+
+      # --- Memória persistente e autogeração de skills ---
+      HERMES_MEMORY_PERSISTENT: "${HERMES_MEMORY_PERSISTENT:-true}"
+      HERMES_SKILLS_AUTOGEN: "${HERMES_SKILLS_AUTOGEN:-true}"
+
+      TZ: "${TZ:-America/Sao_Paulo}"
+
+    secrets:
+      - hermes_bot_token
+      - hermes_llm_api_key
+
+    volumes:
+      # Bind mount: aponta direto para um diretório real no disco do host.
+      # Assim dá pra fazer backup/tar/rsync/scp e "transplantar" a memória e
+      # as skills acumuladas para um Hermes rodando em outro servidor.
+      - type: bind
+        source: ${HERMES_HOST_DATA_DIR:-/srv/hermes/data}
+        target: /root/.hermes
+
+    networks:
+      - hermes_net
+
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 60s
+      resources:
+        limits:
+          cpus: "${HERMES_CPU_LIMIT:-4}"
+          memory: ${HERMES_MEM_LIMIT:-4G}
+        reservations:
+          cpus: "1"
+          memory: 1G
+      placement:
+        constraints:
+          # Bind mount só existe neste host: trave o serviço nele.
+          # Troque pelo hostname real (ex: node.hostname == server-01).
+          - node.hostname == ${HERMES_NODE_HOSTNAME:?defina o hostname do node no .env}
+
+  # --- Opcional: Ollama para rodar o modelo 100% local ---
+  # Descomente este serviço se quiser inferência local em vez de API na nuvem.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - hermes_net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "6"
+  #         memory: 12G
+
+networks:
+  hermes_net:
+    driver: overlay
+    attachable: true
+
+volumes:
+  # hermes_data (named volume) removido: agora usamos bind mount direto no
+  # host (ver HERMES_HOST_DATA_DIR no .env) para facilitar backup/transferência.
+  # ollama_data:
+  #   driver: local
+
+secrets:
+  hermes_bot_token:
+    external: true
+  hermes_llm_api_key:
+    external: true
+
+# ============================================================
+# INSTRUÇÕES DE USO
+# ============================================================
+#
+# 1) Inicializar o Swarm (se ainda não estiver ativo):
+#      docker swarm init
+#
+# 2) Criar os secrets (nunca coloque tokens direto no compose):
+#      echo "SEU_TOKEN_DO_TELEGRAM" | docker secret create hermes_bot_token -
+#      echo "SUA_API_KEY_DO_LLM"    | docker secret create hermes_llm_api_key -
+#
+# 3) Subir a stack:
+#      docker stack deploy -c docker-compose.yaml hermes
+#
+# 4) Acompanhar o serviço:
+#      docker service ls
+#      docker service logs -f hermes_hermes-agent
+#
+# 5) Entrar no container pra rodar comandos do Hermes (ex: configurar MCP,
+#    checar skills geradas):
+#      docker exec -it $(docker ps -q -f name=hermes_hermes-agent) sh
+#
+# 6) Remover a stack:
+#      docker stack rm hermes
+#
+# Observações:
+# - Os secrets do Docker Swarm são montados em /run/secrets/<nome> dentro do
+#   container. Se a imagem do Hermes não ler secrets nativamente, ajuste o
+#   entrypoint/config.yaml para carregar as variáveis a partir desses arquivos
+#   (ex: HERMES_BOT_TOKEN_FILE=/run/secrets/hermes_bot_token), ou adapte para
+#   variáveis de ambiente comuns caso a imagem não suporte *_FILE.
+# - Para rodar 100% local, descomente o serviço "ollama" e aponte
+#   HERMES_LLM_BASE_URL para "http://ollama:11434/v1".
+#
+# ============================================================
+# BIND MOUNT E TRANSFERÊNCIA DE CONHECIMENTO ENTRE SERVIDORES
+# ============================================================
+#
+# 0) Antes do primeiro deploy, crie o diretório no host e dê permissão:
+#      sudo mkdir -p /srv/hermes/data
+#      sudo chown -R 1000:1000 /srv/hermes/data   # ajuste UID/GID conforme a imagem
+#
+# 1) Descubra o hostname do node onde o diretório existe:
+#      docker node ls
+#    e defina HERMES_NODE_HOSTNAME no .env com esse valor.
+#
+# 2) Para "exportar" o conhecimento acumulado (memória + skills) para outro
+#    servidor:
+#      a) Pare ou drene o serviço antes de copiar, pra evitar cópia de
+#         arquivos sendo escritos no momento:
+#           docker service scale hermes_hermes-agent=0
+#      b) Compacte o diretório:
+#           tar -czf hermes-data-backup.tar.gz -C /srv/hermes/data .
+#      c) Transfira para o outro servidor:
+#           scp hermes-data-backup.tar.gz usuario@outro-servidor:/tmp/
+#      d) No servidor de destino, crie o diretório e extraia:
+#           sudo mkdir -p /srv/hermes/data
+#           sudo tar -xzf /tmp/hermes-data-backup.tar.gz -C /srv/hermes/data
+#      e) Suba a stack normalmente lá (com o mesmo compose, ajustando
+#         HERMES_HOST_DATA_DIR e HERMES_NODE_HOSTNAME no .env daquele host).
+#      f) Reative o serviço original, se for manter os dois rodando:
+#           docker service scale hermes_hermes-agent=1
+#
+# 3) Alternativa sem downtime: usar rsync com --checksum periodicamente
+#    (cron) em vez de parar o serviço, aceitando pequena chance de copiar
+#    um arquivo no meio de uma escrita (geralmente inofensivo, mas não é
+#    atômico como um snapshot).
+#
+# 4) Se quiser manter os dois servidores sincronizados continuamente (não
+#    apenas uma transferência pontual), considere trocar o bind mount local
+#    por um volume em um filesystem compartilhado (NFS, GlusterFS, etc.) via
+#    plugin de volume do Docker — nesse caso ambos os containers podem
+#    apontar pro mesmo storage, mas cuidado: rodar dois Hermes escrevendo na
+#    mesma base de memória ao mesmo tempo pode gerar condição de corrida.
