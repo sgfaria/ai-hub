@@ -1,0 +1,33 @@
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    container_name: ollama
+    restart: unless-stopped
+
+    environment:
+      TZ: ${TZ:-America/Sao_Paulo}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+
+    volumes:
+      - ${AI_HUB_ROOT:-/srv/ai-hub}/ollama/models:/root/.ollama
+
+    expose:
+      - "11434"
+
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    external: true
+    name: ${AI_HUB_NETWORK:-ai-network}

@@ -1,9 +1,0 @@
-version: "3.9"
-services:
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    expose: ["11434"]
-    volumes: ["./models:/root/.ollama"]
-    networks: [ai-network]
-networks: {ai-network: {external: true}}

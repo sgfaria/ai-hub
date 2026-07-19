@@ -1,14 +1,25 @@
-# Environment files
+# Segredos e configurações locais
 .env
+**/.env
 *.env
 !*.env.example
+!env.example
+secrets/
+**/secrets/
 
-# Local database/data directories
+# Dados persistentes locais
+data/
 **/data/
+workspace/
 **/workspace/
+models/
 **/models/
+backups/
+**/backups/
 
-# OS files
+# Arquivos temporários e do sistema
+*.log
+*.tar.gz
 Thumbs.db
 Desktop.ini
 .DS_Store

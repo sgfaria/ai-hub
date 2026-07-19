@@ -1,32 +1,50 @@
 # AI Hub
 
-Repositório central para gerenciar e implantar stacks de Inteligência Artificial e ferramentas auxiliares via Docker.
+Infraestrutura modular para agentes e serviços de IA em um homelab, usando
+Docker Compose/Portainer em modo **Standalone**. O projeto não requer Swarm.
 
-## Stacks Disponíveis
+## Princípios
 
-- **`cloudflared/`**: Serviço do Cloudflare Tunnel para expor aplicações locais de forma segura.
-- **`hermes/`**: Stack para o agente LLM (`hermes-agent`), com opções de implantação em Docker Swarm e Docker Compose tradicional.
-- **`monitoring/`**: Estrutura para coleta de logs e monitoramento (Grafana, Prometheus, Loki).
-- **`n8n/`**: Plataforma de automação de fluxo de trabalho.
-- **`ollama/`**: Runner de LLM local (inferência de modelos locais).
-- **`openwebui/`**: Interface web amigável para chat com LLMs.
-- **`postgres/`**: Banco de dados relacional PostgreSQL 17.
-- **`redis/`**: Cache em memória Redis 7.
+- uma stack por diretório;
+- rede bridge externa compartilhada `ai-network`;
+- dados persistentes em bind mounts sob `/srv/ai-hub`;
+- segredos fora do Git, fornecidos por `.env` ou pela interface do Portainer;
+- nenhuma porta publicada por padrão: o Cloudflare Tunnel acessa os serviços
+  diretamente pela rede Docker;
+- imagens versionadas por variável para permitir atualização controlada.
 
----
+## Componentes
 
-## Como Começar
+| Diretório | Serviço | Estado |
+|---|---|---|
+| `hermes/` | Hermes Agent e API compatível com OpenAI | utilizável |
+| `openwebui/` | Interface web conectada ao Hermes | utilizável |
+| `ollama/` | Inferência local opcional | base |
+| `postgres/` | Banco compartilhado | base |
+| `redis/` | Cache compartilhado | base |
+| `n8n/` | Automação | base |
+| `cloudflared/` | Integração com túnel existente | base |
+| `monitoring/` | Observabilidade | planejado |
 
-### 1. Criar a Rede Docker Externa
-Todas as stacks são configuradas para utilizar uma rede externa compartilhada chamada `ai-network`:
+## Início rápido
+
+No host Docker:
 
 ```bash
-docker network create ai-network
+sudo ./scripts/bootstrap-host.sh
 ```
 
-### 2. Configurar e Implantar as Stacks
-Navegue até o diretório da stack desejada e siga as instruções específicas.
+Depois, no Portainer, crie uma Stack a partir do repositório Git e use o
+arquivo `hermes/compose.yaml`. Cadastre as variáveis de `hermes/.env.example`
+na tela da Stack. Faça o mesmo com `openwebui/compose.yaml`.
 
-Para implantar via Portainer (ou diretamente via CLI):
-- Certifique-se de que a rede `ai-network` foi criada no ambiente.
-- Crie os volumes e arquivos `.env` necessários conforme o `env.example` da stack.
+Antes do primeiro uso, configure o provedor do Hermes conforme o guia em
+[`hermes/README.md`](hermes/README.md). A chave `API_SERVER_KEY` deve ser a
+mesma nas stacks Hermes e Open WebUI.
+
+## Segurança
+
+Nunca confirme arquivos `.env`, tokens, senhas ou backups no Git. Os bancos
+não publicam portas no host. Para acesso externo, crie hostnames no Cloudflare
+Tunnel apontando para os nomes Docker, por exemplo `http://open-webui:8080` e
+`http://hermes-agent:9119`.
